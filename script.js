@@ -102,8 +102,12 @@ class FileManager {
             lastModified: file.lastModified,
             extension: this.getFileExtension(file.name),
             category: this.getFileCategory(file.type, file.name),
-            pages: this.generateMockPages(file.name)
+            pages: [],
+            content: null
         };
+        
+        // Read file content based on file type
+        this.readFileContent(file, fileData);
         
         this.files.push(fileData);
         
@@ -112,6 +116,67 @@ class FileManager {
         }
         
         this.fileAreas[fileData.category].push(fileData);
+    }
+
+    readFileContent(file, fileData) {
+        const reader = new FileReader();
+        
+        if (file.type.includes('image')) {
+            // For images, read as data URL
+            reader.onload = (e) => {
+                fileData.content = e.target.result;
+                fileData.pages = [
+                    {
+                        number: 1,
+                        content: e.target.result
+                    }
+                ];
+                this.renderFileAreas();
+                this.updateNavPanel();
+            };
+            reader.readAsDataURL(file);
+        } else if (file.type.includes('text') || fileData.extension === 'txt') {
+            // For text files, read as text
+            reader.onload = (e) => {
+                fileData.content = e.target.result;
+                fileData.pages = this.splitTextIntoPages(e.target.result);
+                this.renderFileAreas();
+                this.updateNavPanel();
+            };
+            reader.readAsText(file);
+        } else if (fileData.extension === 'pdf') {
+            // For PDFs, create placeholder content (PDF.js would be needed for actual rendering)
+            fileData.pages = this.generateMockPages(fileData.name);
+            this.renderFileAreas();
+            this.updateNavPanel();
+        } else if (fileData.extension === 'doc' || fileData.extension === 'docx') {
+            // For Word documents, create placeholder content
+            fileData.pages = this.generateMockPages(fileData.name);
+            this.renderFileAreas();
+            this.updateNavPanel();
+        } else {
+            // For other file types, create placeholder content
+            fileData.pages = this.generateMockPages(fileData.name);
+            this.renderFileAreas();
+            this.updateNavPanel();
+        }
+    }
+
+    splitTextIntoPages(text) {
+        const pages = [];
+        const pageSize = 500; // Characters per page
+        let pageNumber = 1;
+        
+        for (let i = 0; i < text.length; i += pageSize) {
+            const pageContent = text.substring(i, i + pageSize);
+            pages.push({
+                number: pageNumber,
+                content: pageContent
+            });
+            pageNumber++;
+        }
+        
+        return pages;
     }
 
     generateFileId() {
@@ -228,6 +293,12 @@ class FileManager {
         fileItem.appendChild(fileInfo);
         fileItem.appendChild(fileActions);
         
+        // Create content preview based on file type
+        if (file.content) {
+            const contentPreview = this.createContentPreview(file);
+            fileItem.appendChild(contentPreview);
+        }
+        
         // Create pages preview if file has pages
         if (file.pages && file.pages.length > 1) {
             const pagesPreview = this.createPagesPreview(file);
@@ -235,6 +306,34 @@ class FileManager {
         }
         
         return fileItem;
+    }
+
+    createContentPreview(file) {
+        const contentPreview = document.createElement('div');
+        contentPreview.className = 'content-preview';
+        
+        if (file.type.includes('image')) {
+            // Image preview
+            const img = document.createElement('img');
+            img.src = file.content;
+            img.alt = file.name;
+            img.style.maxWidth = '100%';
+            img.style.maxHeight = '200px';
+            img.style.borderRadius = '4px';
+            contentPreview.appendChild(img);
+        } else if (file.type.includes('text') || file.extension === 'txt') {
+            // Text preview
+            const previewText = document.createElement('div');
+            previewText.className = 'text-preview';
+            const snippet = file.content.substring(0, 200);
+            previewText.textContent = snippet + (file.content.length > 200 ? '...' : '');
+            previewText.style.fontSize = '12px';
+            previewText.style.color = '#666';
+            previewText.style.marginTop = '10px';
+            contentPreview.appendChild(previewText);
+        }
+        
+        return contentPreview;
     }
 
     getFileIcon(extension) {
@@ -308,6 +407,171 @@ class FileManager {
         if (fileArea) {
             fileArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
+        
+        // Show file content modal
+        this.showFileModal(file);
+    }
+
+    showFileModal(file) {
+        // Create modal overlay
+        const modal = document.createElement('div');
+        modal.className = 'file-modal';
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            padding: 20px;
+        `;
+        
+        // Create modal content
+        const modalContent = document.createElement('div');
+        modalContent.className = 'file-modal-content';
+        modalContent.style.cssText = `
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            max-width: 800px;
+            max-height: 80vh;
+            width: 100%;
+            overflow-y: auto;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        `;
+        
+        // Modal header
+        const modalHeader = document.createElement('div');
+        modalHeader.style.cssText = `
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #e0e0e0;
+        `;
+        
+        const modalTitle = document.createElement('h3');
+        modalTitle.textContent = file.name;
+        modalTitle.style.margin = '0';
+        
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = '×';
+        closeBtn.style.cssText = `
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        `;
+        closeBtn.addEventListener('click', () => modal.remove());
+        
+        modalHeader.appendChild(modalTitle);
+        modalHeader.appendChild(closeBtn);
+        
+        // Modal body
+        const modalBody = document.createElement('div');
+        modalBody.className = 'file-modal-body';
+        
+        if (file.type.includes('image')) {
+            // Image display
+            const img = document.createElement('img');
+            img.src = file.content;
+            img.alt = file.name;
+            img.style.cssText = `
+                max-width: 100%;
+                height: auto;
+                border-radius: 4px;
+            `;
+            modalBody.appendChild(img);
+        } else if (file.type.includes('text') || file.extension === 'txt') {
+            // Text display
+            const textContainer = document.createElement('pre');
+            textContainer.textContent = file.content;
+            textContainer.style.cssText = `
+                white-space: pre-wrap;
+                word-wrap: break-word;
+                font-size: 14px;
+                line-height: 1.6;
+                background-color: #f8f9fa;
+                padding: 15px;
+                border-radius: 4px;
+                margin: 0;
+                max-height: 60vh;
+                overflow-y: auto;
+            `;
+            modalBody.appendChild(textContainer);
+        } else if (file.extension === 'pdf') {
+            // PDF display placeholder
+            const pdfViewer = document.createElement('div');
+            pdfViewer.style.cssText = `
+                padding: 20px;
+                text-align: center;
+                color: #666;
+                font-size: 16px;
+            `;
+            pdfViewer.innerHTML = `
+                <div style="font-size: 48px; margin-bottom: 10px;">📄</div>
+                <p>PDF preview requires PDF.js library</p>
+                <p style="font-size: 12px; margin-top: 10px;">This is a placeholder for PDF content</p>
+                ${file.pages.length > 0 ? `<p style="font-size: 14px; margin-top: 10px;">Pages: ${file.pages.length}</p>` : ''}
+            `;
+            modalBody.appendChild(pdfViewer);
+        } else if (file.extension === 'doc' || file.extension === 'docx') {
+            // Word document display placeholder
+            const docViewer = document.createElement('div');
+            docViewer.style.cssText = `
+                padding: 20px;
+                text-align: center;
+                color: #666;
+                font-size: 16px;
+            `;
+            docViewer.innerHTML = `
+                <div style="font-size: 48px; margin-bottom: 10px;">📘</div>
+                <p>Word document preview requires specialized library</p>
+                <p style="font-size: 12px; margin-top: 10px;">This is a placeholder for document content</p>
+                ${file.pages.length > 0 ? `<p style="font-size: 14px; margin-top: 10px;">Pages: ${file.pages.length}</p>` : ''}
+            `;
+            modalBody.appendChild(docViewer);
+        } else {
+            // Other file types display
+            const defaultViewer = document.createElement('div');
+            defaultViewer.style.cssText = `
+                padding: 20px;
+                text-align: center;
+                color: #666;
+                font-size: 16px;
+            `;
+            defaultViewer.innerHTML = `
+                <div style="font-size: 48px; margin-bottom: 10px;">📦</div>
+                <p>Preview not available for this file type</p>
+                <p style="font-size: 12px; margin-top: 10px;">${file.size > 0 ? this.formatFileSize(file.size) : ''}</p>
+            `;
+            modalBody.appendChild(defaultViewer);
+        }
+        
+        modalContent.appendChild(modalHeader);
+        modalContent.appendChild(modalBody);
+        modal.appendChild(modalContent);
+        
+        // Close modal when clicking outside
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        });
+        
+        document.body.appendChild(modal);
     }
 
     viewPage(file, pageNumber) {
