@@ -151,12 +151,31 @@ class FileManager {
             };
             reader.readAsText(file);
         } else if (fileData.extension === 'pdf') {
-            // For PDFs, read as data URL for embedding
+            // For PDFs, read as data URL for embedding and count actual pages
             reader.onload = (e) => {
                 fileData.content = e.target.result;
-                fileData.pages = this.generateMockPages(fileData.name);
-                this.renderFileAreas();
-                this.updateNavPanel();
+                
+                // Use PDF.js to count actual pages
+                const arrayBuffer = this.dataURLToArrayBuffer(e.target.result);
+                pdfjsLib.getDocument(arrayBuffer).promise.then(pdf => {
+                    const pageCount = pdf.numPages;
+                    const pages = [];
+                    for (let i = 1; i <= pageCount; i++) {
+                        pages.push({
+                            number: i,
+                            content: `Page ${i} of ${fileData.name}`
+                        });
+                    }
+                    fileData.pages = pages;
+                    this.renderFileAreas();
+                    this.updateNavPanel();
+                }).catch(error => {
+                    console.error('Error reading PDF:', error);
+                    // Fallback to mock pages if PDF.js fails
+                    fileData.pages = this.generateMockPages(fileData.name);
+                    this.renderFileAreas();
+                    this.updateNavPanel();
+                });
             };
             reader.readAsDataURL(file);
         } else if (fileData.extension === 'doc' || fileData.extension === 'docx') {
@@ -346,7 +365,7 @@ class FileManager {
 
     createContentPreview(file) {
         const contentPreview = document.createElement('div');
-        contentPreview.className = 'content-preview';
+        contentPreview.className = 'content-preview expanded';
         
         // Preview header with toggle button
         const previewHeader = document.createElement('div');
@@ -358,7 +377,7 @@ class FileManager {
         
         const previewToggle = document.createElement('button');
         previewToggle.className = 'preview-toggle';
-        previewToggle.textContent = 'Show Preview';
+        previewToggle.textContent = 'Hide Preview';
         
         previewHeader.appendChild(previewTitle);
         previewHeader.appendChild(previewToggle);
@@ -366,7 +385,7 @@ class FileManager {
         // Preview content container
         const previewContent = document.createElement('div');
         previewContent.className = 'preview-content';
-        previewContent.style.display = 'none';
+        previewContent.style.display = 'block';
         
         // Render appropriate preview based on file type
         if (file.type.includes('image')) {
@@ -453,6 +472,17 @@ class FileManager {
         };
         
         return icons[extension] || '📦';
+    }
+
+    dataURLToArrayBuffer(dataURL) {
+        const base64 = dataURL.split(',')[1];
+        const binaryString = window.atob(base64);
+        const arrayBuffer = new ArrayBuffer(binaryString.length);
+        const uint8Array = new Uint8Array(arrayBuffer);
+        for (let i = 0; i < binaryString.length; i++) {
+            uint8Array[i] = binaryString.charCodeAt(i);
+        }
+        return arrayBuffer;
     }
 
     formatFileSize(bytes) {
@@ -687,7 +717,7 @@ class FileManager {
                 ${file.pages.length > 0 ? `<p style="font-size: 14px; margin-top: 10px;">Pages: ${file.pages.length}</p>` : ''}
                 ${downloadLink}
             `;
-            modalBody.appendChild(docViewer);
+            modalBody.appendChild(officeViewer);
         } else {
             // Other file types display
             const defaultViewer = document.createElement('div');
