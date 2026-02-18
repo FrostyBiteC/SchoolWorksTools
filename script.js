@@ -145,20 +145,50 @@ class FileManager {
             };
             reader.readAsText(file);
         } else if (fileData.extension === 'pdf') {
-            // For PDFs, create placeholder content (PDF.js would be needed for actual rendering)
-            fileData.pages = this.generateMockPages(fileData.name);
-            this.renderFileAreas();
-            this.updateNavPanel();
+            // For PDFs, read as data URL for embedding
+            reader.onload = (e) => {
+                fileData.content = e.target.result;
+                fileData.pages = this.generateMockPages(fileData.name);
+                this.renderFileAreas();
+                this.updateNavPanel();
+            };
+            reader.readAsDataURL(file);
         } else if (fileData.extension === 'doc' || fileData.extension === 'docx') {
-            // For Word documents, create placeholder content
-            fileData.pages = this.generateMockPages(fileData.name);
-            this.renderFileAreas();
-            this.updateNavPanel();
+            // For Word documents, read as data URL
+            reader.onload = (e) => {
+                fileData.content = e.target.result;
+                fileData.pages = this.generateMockPages(fileData.name);
+                this.renderFileAreas();
+                this.updateNavPanel();
+            };
+            reader.readAsDataURL(file);
+        } else if (fileData.extension === 'xlsx' || fileData.extension === 'xls') {
+            // For Excel files, read as data URL
+            reader.onload = (e) => {
+                fileData.content = e.target.result;
+                fileData.pages = this.generateMockPages(fileData.name);
+                this.renderFileAreas();
+                this.updateNavPanel();
+            };
+            reader.readAsDataURL(file);
+        } else if (fileData.extension === 'ppt' || fileData.extension === 'pptx') {
+            // For PowerPoint files, read as data URL
+            reader.onload = (e) => {
+                fileData.content = e.target.result;
+                fileData.pages = this.generateMockPages(fileData.name);
+                this.renderFileAreas();
+                this.updateNavPanel();
+            };
+            reader.readAsDataURL(file);
         } else {
-            // For other file types, create placeholder content
-            fileData.pages = this.generateMockPages(fileData.name);
-            this.renderFileAreas();
-            this.updateNavPanel();
+            // For other file types, read as data URL
+            reader.onload = (e) => {
+                fileData.content = e.target.result;
+                fileData.pages = this.generateMockPages(fileData.name);
+                this.renderFileAreas();
+                this.updateNavPanel();
+            };
+            reader.readAsDataURL(file);
         }
     }
 
@@ -437,8 +467,8 @@ class FileManager {
             background-color: white;
             border-radius: 8px;
             padding: 20px;
-            max-width: 800px;
-            max-height: 80vh;
+            max-width: 900px;
+            max-height: 90vh;
             width: 100%;
             overflow-y: auto;
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
@@ -483,6 +513,7 @@ class FileManager {
         const modalBody = document.createElement('div');
         modalBody.className = 'file-modal-body';
         
+        // File preview based on type
         if (file.type.includes('image')) {
             // Image display
             const img = document.createElement('img');
@@ -512,35 +543,57 @@ class FileManager {
             `;
             modalBody.appendChild(textContainer);
         } else if (file.extension === 'pdf') {
-            // PDF display placeholder
-            const pdfViewer = document.createElement('div');
+            // PDF display using data URL
+            const pdfViewer = document.createElement('embed');
+            pdfViewer.src = file.content;
+            pdfViewer.type = 'application/pdf';
             pdfViewer.style.cssText = `
-                padding: 20px;
-                text-align: center;
-                color: #666;
-                font-size: 16px;
-            `;
-            pdfViewer.innerHTML = `
-                <div style="font-size: 48px; margin-bottom: 10px;">📄</div>
-                <p>PDF preview requires PDF.js library</p>
-                <p style="font-size: 12px; margin-top: 10px;">This is a placeholder for PDF content</p>
-                ${file.pages.length > 0 ? `<p style="font-size: 14px; margin-top: 10px;">Pages: ${file.pages.length}</p>` : ''}
+                width: 100%;
+                height: 600px;
+                border-radius: 4px;
             `;
             modalBody.appendChild(pdfViewer);
-        } else if (file.extension === 'doc' || file.extension === 'docx') {
-            // Word document display placeholder
-            const docViewer = document.createElement('div');
-            docViewer.style.cssText = `
+        } else if (file.extension === 'doc' || file.extension === 'docx' || 
+                   file.extension === 'xlsx' || file.extension === 'xls' || 
+                   file.extension === 'ppt' || file.extension === 'pptx') {
+            // Office document preview
+            const officeViewer = document.createElement('div');
+            officeViewer.style.cssText = `
                 padding: 20px;
                 text-align: center;
                 color: #666;
                 font-size: 16px;
             `;
-            docViewer.innerHTML = `
-                <div style="font-size: 48px; margin-bottom: 10px;">📘</div>
-                <p>Word document preview requires specialized library</p>
-                <p style="font-size: 12px; margin-top: 10px;">This is a placeholder for document content</p>
+            
+            // Check if we have file content to create a download link
+            let downloadLink = '';
+            if (file.content) {
+                downloadLink = `
+                    <a href="${file.content}" download="${file.name}" 
+                       style="display: inline-block; margin-top: 15px; padding: 10px 20px; 
+                              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                              color: white; text-decoration: none; border-radius: 25px; 
+                              font-weight: 600; transition: all 0.3s ease;">
+                        📥 Download ${file.name}
+                    </a>
+                `;
+            }
+            
+            const fileIcons = {
+                doc: '📘',
+                docx: '📘',
+                xls: '📊',
+                xlsx: '📊',
+                ppt: '📽️',
+                pptx: '📽️'
+            };
+            
+            officeViewer.innerHTML = `
+                <div style="font-size: 48px; margin-bottom: 10px;">${fileIcons[file.extension] || '📄'}</div>
+                <p>Office document preview requires Google Docs Viewer</p>
+                <p style="font-size: 12px; margin-top: 10px;">For best viewing experience, download and open in Microsoft Office</p>
                 ${file.pages.length > 0 ? `<p style="font-size: 14px; margin-top: 10px;">Pages: ${file.pages.length}</p>` : ''}
+                ${downloadLink}
             `;
             modalBody.appendChild(docViewer);
         } else {
