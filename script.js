@@ -348,26 +348,94 @@ class FileManager {
         const contentPreview = document.createElement('div');
         contentPreview.className = 'content-preview';
         
+        // Preview header with toggle button
+        const previewHeader = document.createElement('div');
+        previewHeader.className = 'preview-header';
+        
+        const previewTitle = document.createElement('h4');
+        previewTitle.className = 'preview-title';
+        previewTitle.textContent = 'Preview';
+        
+        const previewToggle = document.createElement('button');
+        previewToggle.className = 'preview-toggle';
+        previewToggle.textContent = 'Show Preview';
+        
+        previewHeader.appendChild(previewTitle);
+        previewHeader.appendChild(previewToggle);
+        
+        // Preview content container
+        const previewContent = document.createElement('div');
+        previewContent.className = 'preview-content';
+        previewContent.style.display = 'none';
+        
+        // Render appropriate preview based on file type
         if (file.type.includes('image')) {
             // Image preview
             const img = document.createElement('img');
+            img.className = 'image-preview';
             img.src = file.content;
             img.alt = file.name;
-            img.style.maxWidth = '100%';
-            img.style.maxHeight = '200px';
-            img.style.borderRadius = '4px';
-            contentPreview.appendChild(img);
+            previewContent.appendChild(img);
         } else if (file.type.includes('text') || file.extension === 'txt') {
             // Text preview
             const previewText = document.createElement('div');
             previewText.className = 'text-preview';
-            const snippet = file.content.substring(0, 200);
-            previewText.textContent = snippet + (file.content.length > 200 ? '...' : '');
-            previewText.style.fontSize = '12px';
-            previewText.style.color = '#666';
-            previewText.style.marginTop = '10px';
-            contentPreview.appendChild(previewText);
+            previewText.textContent = file.content;
+            previewContent.appendChild(previewText);
+        } else if (file.extension === 'pdf') {
+            // PDF preview (embedded)
+            const pdfPreview = document.createElement('object');
+            pdfPreview.className = 'pdf-preview';
+            pdfPreview.data = file.content;
+            pdfPreview.type = 'application/pdf';
+            pdfPreview.innerHTML = `
+                <div class="doc-preview">
+                    <div class="file-icon">📄</div>
+                    <p>PDF Preview</p>
+                    <p style="font-size: 12px; margin-top: 10px;">${file.name}</p>
+                </div>
+            `;
+            previewContent.appendChild(pdfPreview);
+        } else if (['doc', 'docx', 'xlsx', 'xls', 'ppt', 'pptx'].includes(file.extension)) {
+            // Document preview
+            const docPreview = document.createElement('div');
+            docPreview.className = 'doc-preview';
+            const icon = this.getFileIcon(file.extension);
+            docPreview.innerHTML = `
+                <div class="file-icon">${icon}</div>
+                <p>${file.extension.toUpperCase()} Document</p>
+                <p style="font-size: 12px; margin-top: 10px;">${file.name}</p>
+            `;
+            previewContent.appendChild(docPreview);
+        } else {
+            // Default preview
+            const defaultPreview = document.createElement('div');
+            defaultPreview.className = 'doc-preview';
+            defaultPreview.innerHTML = `
+                <div class="file-icon">📦</div>
+                <p>File Preview</p>
+                <p style="font-size: 12px; margin-top: 10px;">${file.name}</p>
+            `;
+            previewContent.appendChild(defaultPreview);
         }
+        
+        // Toggle functionality
+        previewToggle.addEventListener('click', () => {
+            const isExpanded = contentPreview.classList.contains('expanded');
+            
+            if (isExpanded) {
+                contentPreview.classList.remove('expanded');
+                previewContent.style.display = 'none';
+                previewToggle.textContent = 'Show Preview';
+            } else {
+                contentPreview.classList.add('expanded');
+                previewContent.style.display = 'block';
+                previewToggle.textContent = 'Hide Preview';
+            }
+        });
+        
+        contentPreview.appendChild(previewHeader);
+        contentPreview.appendChild(previewContent);
         
         return contentPreview;
     }
