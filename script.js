@@ -69,30 +69,38 @@ class FileManager {
         const selectedFiles = event.target.files;
         
         if (selectedFiles.length > 0) {
+            const fileReadPromises = [];
+            
             for (let i = 0; i < selectedFiles.length; i++) {
                 const file = selectedFiles[i];
-                this.addFile(file);
+                const promise = new Promise((resolve) => {
+                    this.addFile(file, resolve);
+                });
+                fileReadPromises.push(promise);
             }
             
-            this.saveFiles();
-            this.renderFileAreas();
-            this.updateNavPanel();
-            
-            // Show files section after upload
-            const uploadSection = document.getElementById('uploadSection');
-            const filesSection = document.getElementById('filesSection');
-            const toggleBtn = document.getElementById('toggleBtn');
-            
-            if (uploadSection.classList.contains('active')) {
-                uploadSection.classList.remove('active');
-                filesSection.classList.add('active');
-                toggleBtn.textContent = 'Add Files';
-                toggleBtn.classList.add('active');
-            }
+            // Wait for all files to be read before saving and rendering
+            Promise.all(fileReadPromises).then(() => {
+                this.saveFiles();
+                this.renderFileAreas();
+                this.updateNavPanel();
+                
+                // Show files section after upload
+                const uploadSection = document.getElementById('uploadSection');
+                const filesSection = document.getElementById('filesSection');
+                const toggleBtn = document.getElementById('toggleBtn');
+                
+                if (uploadSection.classList.contains('active')) {
+                    uploadSection.classList.remove('active');
+                    filesSection.classList.add('active');
+                    toggleBtn.textContent = 'Add Files';
+                    toggleBtn.classList.add('active');
+                }
+            });
         }
     }
 
-    addFile(file) {
+    addFile(file, resolve) {
         const fileId = this.generateFileId();
         const extension = this.getFileExtension(file.name);
         // Ensure we have a proper MIME type for PDF files (sometimes browsers don't provide it)
@@ -113,7 +121,7 @@ class FileManager {
         console.log('Adding file:', fileData);
         
         // Read file content based on file type
-        this.readFileContent(file, fileData);
+        this.readFileContent(file, fileData, resolve);
         
         this.files.push(fileData);
         
@@ -124,7 +132,7 @@ class FileManager {
         this.fileAreas[fileData.category].push(fileData);
     }
 
-    readFileContent(file, fileData) {
+    readFileContent(file, fileData, resolve) {
         const reader = new FileReader();
         
         if (file.type.includes('image')) {
@@ -137,8 +145,7 @@ class FileManager {
                         content: e.target.result
                     }
                 ];
-                this.renderFileAreas();
-                this.updateNavPanel();
+                resolve(); // File reading complete
             };
             reader.readAsDataURL(file);
         } else if (file.type.includes('text') || fileData.extension === 'txt') {
@@ -146,8 +153,7 @@ class FileManager {
             reader.onload = (e) => {
                 fileData.content = e.target.result;
                 fileData.pages = this.splitTextIntoPages(e.target.result);
-                this.renderFileAreas();
-                this.updateNavPanel();
+                resolve(); // File reading complete
             };
             reader.readAsText(file);
         } else if (fileData.extension === 'pdf') {
@@ -167,14 +173,12 @@ class FileManager {
                         });
                     }
                     fileData.pages = pages;
-                    this.renderFileAreas();
-                    this.updateNavPanel();
+                    resolve(); // File reading complete
                 }).catch(error => {
                     console.error('Error reading PDF:', error);
                     // Fallback to mock pages if PDF.js fails
                     fileData.pages = this.generateMockPages(fileData.name);
-                    this.renderFileAreas();
-                    this.updateNavPanel();
+                    resolve(); // File reading complete (even with error)
                 });
             };
             reader.readAsDataURL(file);
@@ -183,8 +187,7 @@ class FileManager {
             reader.onload = (e) => {
                 fileData.content = e.target.result;
                 fileData.pages = this.generateMockPages(fileData.name);
-                this.renderFileAreas();
-                this.updateNavPanel();
+                resolve(); // File reading complete
             };
             reader.readAsDataURL(file);
         } else if (fileData.extension === 'xlsx' || fileData.extension === 'xls') {
@@ -192,8 +195,7 @@ class FileManager {
             reader.onload = (e) => {
                 fileData.content = e.target.result;
                 fileData.pages = this.generateMockPages(fileData.name);
-                this.renderFileAreas();
-                this.updateNavPanel();
+                resolve(); // File reading complete
             };
             reader.readAsDataURL(file);
         } else if (fileData.extension === 'ppt' || fileData.extension === 'pptx') {
@@ -201,8 +203,7 @@ class FileManager {
             reader.onload = (e) => {
                 fileData.content = e.target.result;
                 fileData.pages = this.generateMockPages(fileData.name);
-                this.renderFileAreas();
-                this.updateNavPanel();
+                resolve(); // File reading complete
             };
             reader.readAsDataURL(file);
         } else {
@@ -210,8 +211,7 @@ class FileManager {
             reader.onload = (e) => {
                 fileData.content = e.target.result;
                 fileData.pages = this.generateMockPages(fileData.name);
-                this.renderFileAreas();
-                this.updateNavPanel();
+                resolve(); // File reading complete
             };
             reader.readAsDataURL(file);
         }
