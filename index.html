@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Upload & Management</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>File Manager</h1>
+            <div class="controls">
+                <button id="toggleBtn" class="toggle-btn">View Files</button>
+                <button id="uploadBtn" class="upload-btn">Upload Files</button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Upload Section -->
+            <section id="uploadSection" class="upload-section active">
+                <div class="upload-container">
+                    <button id="plusBtn" class="plus-btn">+</button>
+                    <input type="file" id="fileInput" multiple accept=".pdf,.doc,.docx,.txt,.jpg,.png">
+                    <p class="upload-hint">Click the + button to upload files</p>
+                </div>
+            </section>
+
+            <!-- File Areas Section -->
+            <section id="filesSection" class="files-section">
+                <div class="files-container">
+                    <!-- File Areas will be dynamically created here -->
+                </div>
+            </section>
+        </main>
+
+        <!-- Navigation Panel -->
+        <aside id="navPanel" class="nav-panel">
+            <div class="nav-content">
+                <h3>Navigation</h3>
+                
+                <!-- Area Navigation -->
+                <div class="nav-section">
+                    <h4>Areas</h4>
+                    <ul id="areaNav" class="nav-list">
+                        <!-- Area navigation items will be dynamically created -->
+                    </ul>
+                </div>
+
+                <!-- Page Navigation -->
+                <div class="nav-section">
+                    <h4>Pages</h4>
+                    <ul id="pageNav" class="nav-list">
+                        <!-- Page navigation items will be dynamically created -->
+                    </ul>
+                </div>
+
+                <!-- Search Section -->
+                <div class="nav-section">
+                    <h4>Search</h4>
+                    <div class="search-container">
+                        <input type="text" id="searchInput" class="search-input" placeholder="Search text...">
+                        <button id="searchBtn" class="search-btn">Search</button>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
