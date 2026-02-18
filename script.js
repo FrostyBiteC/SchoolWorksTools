@@ -132,7 +132,7 @@ class FileManager {
         this.fileAreas[fileData.category].push(fileData);
     }
 
-    readFileContent(file, fileData, resolve) {
+     readFileContent(file, fileData, resolve) {
         const reader = new FileReader();
         
         if (file.type.includes('image')) {
@@ -161,19 +161,40 @@ class FileManager {
             reader.onload = (e) => {
                 fileData.content = e.target.result;
                 
-                // Use PDF.js to count actual pages
+                // Use PDF.js to count actual pages and render thumbnails
                 const arrayBuffer = this.dataURLToArrayBuffer(e.target.result);
                 pdfjsLib.getDocument(arrayBuffer).promise.then(pdf => {
                     const pageCount = pdf.numPages;
                     const pages = [];
+                    
+                    // Render each page as a thumbnail
+                    const pagePromises = [];
                     for (let i = 1; i <= pageCount; i++) {
-                        pages.push({
-                            number: i,
-                            content: `Page ${i} of ${fileData.name}`
+                        const pagePromise = pdf.getPage(i).then(page => {
+                            const viewport = page.getViewport({ scale: 0.3 });
+                            const canvas = document.createElement('canvas');
+                            const context = canvas.getContext('2d');
+                            canvas.width = viewport.width;
+                            canvas.height = viewport.height;
+                            
+                            return page.render({
+                                canvasContext: context,
+                                viewport: viewport
+                            }).promise.then(() => {
+                                pages.push({
+                                    number: i,
+                                    content: canvas.toDataURL('image/png')
+                                });
+                            });
                         });
+                        pagePromises.push(pagePromise);
                     }
-                    fileData.pages = pages;
-                    resolve(); // File reading complete
+                    
+                    Promise.all(pagePromises).then(() => {
+                        // Sort pages by number
+                        fileData.pages = pages.sort((a, b) => a.number - b.number);
+                        resolve(); // File reading complete
+                    });
                 }).catch(error => {
                     console.error('Error reading PDF:', error);
                     // Fallback to mock pages if PDF.js fails
@@ -183,26 +204,33 @@ class FileManager {
             };
             reader.readAsDataURL(file);
         } else if (fileData.extension === 'doc' || fileData.extension === 'docx') {
-            // For Word documents, read as data URL
+            // For Word documents, read as data URL and generate preview
             reader.onload = (e) => {
                 fileData.content = e.target.result;
-                fileData.pages = this.generateMockPages(fileData.name);
+                // Generate preview pages with actual document content placeholder
+                fileData.pages = [
+                    { number: 1, content: `Document: ${fileData.name}\n\nThis is a preview of your Word document. For full functionality, please download and open the document.` }
+                ];
                 resolve(); // File reading complete
             };
             reader.readAsDataURL(file);
         } else if (fileData.extension === 'xlsx' || fileData.extension === 'xls') {
-            // For Excel files, read as data URL
+            // For Excel files, read as data URL and generate preview
             reader.onload = (e) => {
                 fileData.content = e.target.result;
-                fileData.pages = this.generateMockPages(fileData.name);
+                fileData.pages = [
+                    { number: 1, content: `Spreadsheet: ${fileData.name}\n\nThis is a preview of your Excel spreadsheet. For full functionality, please download and open the document.` }
+                ];
                 resolve(); // File reading complete
             };
             reader.readAsDataURL(file);
         } else if (fileData.extension === 'ppt' || fileData.extension === 'pptx') {
-            // For PowerPoint files, read as data URL
+            // For PowerPoint files, read as data URL and generate preview
             reader.onload = (e) => {
                 fileData.content = e.target.result;
-                fileData.pages = this.generateMockPages(fileData.name);
+                fileData.pages = [
+                    { number: 1, content: `Presentation: ${fileData.name}\n\nThis is a preview of your PowerPoint presentation. For full functionality, please download and open the document.` }
+                ];
                 resolve(); // File reading complete
             };
             reader.readAsDataURL(file);
@@ -210,7 +238,9 @@ class FileManager {
             // For other file types, read as data URL
             reader.onload = (e) => {
                 fileData.content = e.target.result;
-                fileData.pages = this.generateMockPages(fileData.name);
+                fileData.pages = [
+                    { number: 1, content: `File: ${fileData.name}\n\nPreview not available for this file type. Please download to view.` }
+                ];
                 resolve(); // File reading complete
             };
             reader.readAsDataURL(file);
@@ -495,7 +525,7 @@ class FileManager {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
 
-    createPagesPreview(file) {
+     createPagesPreview(file) {
         const pagesPreview = document.createElement('div');
         pagesPreview.className = 'pages-preview';
         
@@ -508,9 +538,53 @@ class FileManager {
         file.pages.slice(0, 6).forEach(page => {
             const pageThumbnail = document.createElement('div');
             pageThumbnail.className = 'page-thumbnail';
-            pageThumbnail.textContent = `Page ${page.number}`;
-            pageThumbnail.addEventListener('click', () => this.viewPage(file, page.number));
             
+            // Display actual content preview based on file type
+            if (file.type.includes('image')) {
+                // Image thumbnail
+                const img = document.createElement('img');
+                img.src = page.content;
+                img.alt = `Page ${page.number}`;
+                img.style.cssText = `
+                    width: 100%;
+                    height: 100%;
+                    object-fit: cover;
+                    border-radius: 6px;
+                `;
+                pageThumbnail.appendChild(img);
+            } else if (file.extension === 'pdf' && page.content && page.content.startsWith('data:image')) {
+                // PDF thumbnail
+                const img = document.createElement('img');
+                img.src = page.content;
+                img.alt = `Page ${page.number}`;
+                img.style.cssText = `
+                    width: 100%;
+                    height: 100%;
+                    object-fit: cover;
+                    border-radius: 6px;
+                `;
+                pageThumbnail.appendChild(img);
+            } else {
+                // Text or other type thumbnail
+                pageThumbnail.textContent = `Page ${page.number}`;
+                if (page.content && page.content.length > 30) {
+                    const previewText = page.content.substring(0, 30) + '...';
+                    const previewDiv = document.createElement('div');
+                    previewDiv.style.cssText = `
+                        font-size: 10px;
+                        margin-top: 5px;
+                        text-align: center;
+                        color: #999;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                        white-space: nowrap;
+                    `;
+                    previewDiv.textContent = previewText;
+                    pageThumbnail.appendChild(previewDiv);
+                }
+            }
+            
+            pageThumbnail.addEventListener('click', () => this.viewPage(file, page.number));
             pagesGrid.appendChild(pageThumbnail);
         });
         
@@ -675,10 +749,10 @@ class FileManager {
                 `;
                 modalBody.appendChild(errorDiv);
             }
-        } else if (file.extension === 'doc' || file.extension === 'docx' || 
+         } else if (file.extension === 'doc' || file.extension === 'docx' || 
                    file.extension === 'xlsx' || file.extension === 'xls' || 
                    file.extension === 'ppt' || file.extension === 'pptx') {
-            // Office document preview
+            // Office document preview with Google Docs Viewer
             const officeViewer = document.createElement('div');
             officeViewer.style.cssText = `
                 padding: 20px;
@@ -710,11 +784,29 @@ class FileManager {
                 pptx: '📽️'
             };
             
+            // Try to use Google Docs Viewer for preview
+            const googleViewerUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(file.content)}&embedded=true`;
+            
             officeViewer.innerHTML = `
                 <div style="font-size: 48px; margin-bottom: 10px;">${fileIcons[file.extension] || '📄'}</div>
-                <p>Office document preview requires Google Docs Viewer</p>
-                <p style="font-size: 12px; margin-top: 10px;">For best viewing experience, download and open in Microsoft Office</p>
+                <p>${file.extension.toUpperCase()} Document Preview</p>
                 ${file.pages.length > 0 ? `<p style="font-size: 14px; margin-top: 10px;">Pages: ${file.pages.length}</p>` : ''}
+                
+                <div style="margin: 20px 0; height: 500px; border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;">
+                    <iframe 
+                        src="${googleViewerUrl}" 
+                        width="100%" 
+                        height="100%" 
+                        frameborder="0"
+                        style="border: none;"
+                    >
+                        <p>Your browser does not support iframes. Please download the document to view.</p>
+                    </iframe>
+                </div>
+                
+                <p style="font-size: 12px; margin-top: 10px;">
+                    For best viewing experience, use the Google Docs Viewer or download and open in Microsoft Office
+                </p>
                 ${downloadLink}
             `;
             modalBody.appendChild(officeViewer);
@@ -749,7 +841,7 @@ class FileManager {
         document.body.appendChild(modal);
     }
 
-    viewPage(file, pageNumber) {
+     viewPage(file, pageNumber) {
         this.currentFile = file;
         this.currentArea = file.category;
         this.currentPage = pageNumber;
@@ -758,6 +850,221 @@ class FileManager {
         this.highlightActiveArea();
         
         console.log(`Viewing page ${pageNumber} of ${file.name}`);
+        
+        // Show page content modal
+        this.showPageModal(file, pageNumber);
+    }
+
+    showPageModal(file, pageNumber) {
+        const page = file.pages.find(p => p.number === pageNumber);
+        if (!page) {
+            console.error(`Page ${pageNumber} not found in file ${file.name}`);
+            return;
+        }
+        
+        // Create modal overlay
+        const modal = document.createElement('div');
+        modal.className = 'file-modal';
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            padding: 20px;
+        `;
+        
+        // Create modal content
+        const modalContent = document.createElement('div');
+        modalContent.className = 'file-modal-content';
+        modalContent.style.cssText = `
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            max-width: 900px;
+            max-height: 90vh;
+            width: 100%;
+            overflow-y: auto;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        `;
+        
+        // Modal header
+        const modalHeader = document.createElement('div');
+        modalHeader.style.cssText = `
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #e0e0e0;
+        `;
+        
+        const modalTitle = document.createElement('h3');
+        modalTitle.textContent = `${file.name} - Page ${pageNumber}`;
+        modalTitle.style.margin = '0';
+        
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = '×';
+        closeBtn.style.cssText = `
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        `;
+        closeBtn.addEventListener('click', () => modal.remove());
+        
+        modalHeader.appendChild(modalTitle);
+        modalHeader.appendChild(closeBtn);
+        
+        // Modal body
+        const modalBody = document.createElement('div');
+        modalBody.className = 'page-modal-body';
+        
+        // Display page content based on file type
+        if (file.type.includes('image')) {
+            // Image display
+            const img = document.createElement('img');
+            img.src = page.content;
+            img.alt = `${file.name} - Page ${pageNumber}`;
+            img.style.cssText = `
+                max-width: 100%;
+                height: auto;
+                border-radius: 4px;
+            `;
+            modalBody.appendChild(img);
+        } else if (file.type.includes('text') || file.extension === 'txt') {
+            // Text display
+            const textContainer = document.createElement('pre');
+            textContainer.textContent = page.content;
+            textContainer.style.cssText = `
+                white-space: pre-wrap;
+                word-wrap: break-word;
+                font-size: 14px;
+                line-height: 1.6;
+                background-color: #f8f9fa;
+                padding: 15px;
+                border-radius: 4px;
+                margin: 0;
+                max-height: 60vh;
+                overflow-y: auto;
+            `;
+            modalBody.appendChild(textContainer);
+        } else if (file.extension === 'pdf') {
+            // PDF page display
+            if (page.content && page.content.startsWith('data:image')) {
+                // Display the rendered page thumbnail
+                const img = document.createElement('img');
+                img.src = page.content;
+                img.alt = `${file.name} - Page ${pageNumber}`;
+                img.style.cssText = `
+                    max-width: 100%;
+                    height: auto;
+                    border-radius: 4px;
+                `;
+                modalBody.appendChild(img);
+                
+                // Add button to view full PDF
+                const viewFullBtn = document.createElement('button');
+                viewFullBtn.textContent = 'View Full PDF';
+                viewFullBtn.style.cssText = `
+                    margin-top: 15px;
+                    padding: 10px 20px;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    border: none;
+                    border-radius: 25px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.3s ease;
+                `;
+                viewFullBtn.addEventListener('click', () => {
+                    modal.remove();
+                    this.showFileModal(file);
+                });
+                modalBody.appendChild(viewFullBtn);
+            } else {
+                // Fallback to text preview
+                const textContainer = document.createElement('div');
+                textContainer.style.cssText = `
+                    padding: 20px;
+                    text-align: center;
+                    color: #666;
+                    font-size: 16px;
+                `;
+                textContainer.innerHTML = `
+                    <div style="font-size: 48px; margin-bottom: 10px;">📄</div>
+                    <p>Page ${pageNumber} of ${file.name}</p>
+                    <p style="font-size: 12px; margin-top: 10px;">PDF page content not available</p>
+                `;
+                modalBody.appendChild(textContainer);
+            }
+        } else if (['doc', 'docx', 'xlsx', 'xls', 'ppt', 'pptx'].includes(file.extension)) {
+            // Office document page display
+            const docContainer = document.createElement('div');
+            docContainer.style.cssText = `
+                padding: 20px;
+                text-align: center;
+                color: #666;
+                font-size: 16px;
+            `;
+            
+            const fileIcons = {
+                doc: '📘',
+                docx: '📘',
+                xls: '📊',
+                xlsx: '📊',
+                ppt: '📽️',
+                pptx: '📽️'
+            };
+            
+            docContainer.innerHTML = `
+                <div style="font-size: 48px; margin-bottom: 10px;">${fileIcons[file.extension] || '📄'}</div>
+                <p>${file.extension.toUpperCase()} Document - Page ${pageNumber}</p>
+                <p style="font-size: 14px; margin-top: 10px;">${page.content}</p>
+            `;
+            
+            modalBody.appendChild(docContainer);
+        } else {
+            // Other file types display
+            const defaultContainer = document.createElement('div');
+            defaultContainer.style.cssText = `
+                padding: 20px;
+                text-align: center;
+                color: #666;
+                font-size: 16px;
+            `;
+            defaultContainer.innerHTML = `
+                <div style="font-size: 48px; margin-bottom: 10px;">📦</div>
+                <p>Page ${pageNumber} of ${file.name}</p>
+                <p style="font-size: 12px; margin-top: 10px;">Preview not available for this file type</p>
+            `;
+            modalBody.appendChild(defaultContainer);
+        }
+        
+        modalContent.appendChild(modalHeader);
+        modalContent.appendChild(modalBody);
+        modal.appendChild(modalContent);
+        
+        // Close modal when clicking outside
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        });
+        
+        document.body.appendChild(modal);
     }
 
     deleteFile(fileId) {
