@@ -94,17 +94,23 @@ class FileManager {
 
     addFile(file) {
         const fileId = this.generateFileId();
+        const extension = this.getFileExtension(file.name);
+        // Ensure we have a proper MIME type for PDF files (sometimes browsers don't provide it)
+        const mimeType = file.type || (extension === 'pdf' ? 'application/pdf' : 'application/octet-stream');
+        
         const fileData = {
             id: fileId,
             name: file.name,
-            type: file.type,
+            type: mimeType,
             size: file.size,
             lastModified: file.lastModified,
-            extension: this.getFileExtension(file.name),
-            category: this.getFileCategory(file.type, file.name),
+            extension: extension,
+            category: this.getFileCategory(mimeType, file.name),
             pages: [],
             content: null
         };
+        
+        console.log('Adding file:', fileData);
         
         // Read file content based on file type
         this.readFileContent(file, fileData);
@@ -544,15 +550,33 @@ class FileManager {
             modalBody.appendChild(textContainer);
         } else if (file.extension === 'pdf') {
             // PDF display using data URL
-            const pdfViewer = document.createElement('embed');
-            pdfViewer.src = file.content;
-            pdfViewer.type = 'application/pdf';
-            pdfViewer.style.cssText = `
-                width: 100%;
-                height: 600px;
-                border-radius: 4px;
-            `;
-            modalBody.appendChild(pdfViewer);
+            console.log('Displaying PDF file:', file);
+            if (file.content && file.content.startsWith('data:')) {
+                const pdfViewer = document.createElement('embed');
+                pdfViewer.src = file.content;
+                pdfViewer.type = 'application/pdf';
+                pdfViewer.style.cssText = `
+                    width: 100%;
+                    height: 600px;
+                    border-radius: 4px;
+                `;
+                modalBody.appendChild(pdfViewer);
+            } else {
+                console.error('Invalid PDF content - no data URL found');
+                const errorDiv = document.createElement('div');
+                errorDiv.style.cssText = `
+                    padding: 20px;
+                    text-align: center;
+                    color: #e74c3c;
+                    font-size: 16px;
+                `;
+                errorDiv.innerHTML = `
+                    <div style="font-size: 48px; margin-bottom: 10px;">❌</div>
+                    <p>Failed to load PDF file</p>
+                    <p style="font-size: 12px; margin-top: 10px;">The PDF content could not be loaded. Please try re-uploading the file.</p>
+                `;
+                modalBody.appendChild(errorDiv);
+            }
         } else if (file.extension === 'doc' || file.extension === 'docx' || 
                    file.extension === 'xlsx' || file.extension === 'xls' || 
                    file.extension === 'ppt' || file.extension === 'pptx') {
@@ -760,18 +784,60 @@ class FileManager {
 
     loadFiles() {
         const savedFiles = localStorage.getItem('uploadedFiles');
+        console.log('Loading saved files from localStorage:', savedFiles);
         if (savedFiles) {
-            this.files = JSON.parse(savedFiles);
-            
-            this.fileAreas = {};
-            this.files.forEach(file => {
-                if (!this.fileAreas[file.category]) {
-                    this.fileAreas[file.category] = [];
-                }
-                this.fileAreas[file.category].push(file);
-            });
-            
-            this.renderFileAreas();
+            try {
+                this.files = JSON.parse(savedFiles);
+                console.log('Parsed files:', this.files);
+                
+                // Ensure all files have proper properties and MIME types
+                this.files = this.files.map(file => {
+                    // Ensure we have a proper file type
+                    if (!file.type || file.type === '') {
+                        const extension = file.extension || this.getFileExtension(file.name);
+                        file.type = extension === 'pdf' ? 'application/pdf' : 
+                                   extension === 'txt' ? 'text/plain' :
+                                   extension === 'jpg' || extension === 'jpeg' ? 'image/jpeg' :
+                                   extension === 'png' ? 'image/png' :
+                                   extension === 'gif' ? 'image/gif' :
+                                   'application/octet-stream';
+                    }
+                    
+                    // Ensure we have extension property
+                    if (!file.extension) {
+                        file.extension = this.getFileExtension(file.name);
+                    }
+                    
+                    // Ensure we have category property
+                    if (!file.category) {
+                        file.category = this.getFileCategory(file.type, file.name);
+                    }
+                    
+                    // Ensure pages array exists
+                    if (!file.pages || !Array.isArray(file.pages)) {
+                        file.pages = this.generateMockPages(file.name);
+                    }
+                    
+                    return file;
+                });
+                
+                this.fileAreas = {};
+                this.files.forEach(file => {
+                    if (!this.fileAreas[file.category]) {
+                        this.fileAreas[file.category] = [];
+                    }
+                    this.fileAreas[file.category].push(file);
+                });
+                
+                console.log('File areas created:', this.fileAreas);
+                this.renderFileAreas();
+            } catch (error) {
+                console.error('Error loading files from localStorage:', error);
+                // Clear invalid localStorage data
+                localStorage.removeItem('uploadedFiles');
+                this.files = [];
+                this.fileAreas = {};
+            }
         }
     }
 }
