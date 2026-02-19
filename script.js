@@ -69,12 +69,25 @@ class FileManager {
         const selectedFiles = event.target.files;
         
         if (selectedFiles.length > 0) {
+            // Show progress indicator
+            const uploadProgress = document.getElementById('uploadProgress');
+            const progressFill = document.getElementById('progressFill');
+            const progressText = document.getElementById('progressText');
+            uploadProgress.classList.add('active');
+            let processedCount = 0;
+            
             const fileReadPromises = [];
             
             for (let i = 0; i < selectedFiles.length; i++) {
                 const file = selectedFiles[i];
                 const promise = new Promise((resolve) => {
-                    this.addFile(file, resolve);
+                    this.addFile(file, () => {
+                        processedCount++;
+                        const progress = Math.round((processedCount / selectedFiles.length) * 100);
+                        progressFill.style.width = `${progress}%`;
+                        progressText.textContent = `Processing file ${processedCount} of ${selectedFiles.length} (${progress}%)`;
+                        resolve();
+                    });
                 });
                 fileReadPromises.push(promise);
             }
@@ -84,6 +97,11 @@ class FileManager {
                 this.saveFiles();
                 this.renderFileAreas();
                 this.updateNavPanel();
+                
+                // Hide progress indicator
+                uploadProgress.classList.remove('active');
+                progressFill.style.width = '0%';
+                progressText.textContent = '';
                 
                 // Show files section after upload
                 const uploadSection = document.getElementById('uploadSection');
@@ -96,6 +114,11 @@ class FileManager {
                     toggleBtn.textContent = 'Add Files';
                     toggleBtn.classList.add('active');
                 }
+            }).catch(error => {
+                console.error('Error uploading files:', error);
+                uploadProgress.classList.remove('active');
+                progressFill.style.width = '0%';
+                progressText.textContent = '';
             });
         }
     }
@@ -132,7 +155,7 @@ class FileManager {
         this.fileAreas[fileData.category].push(fileData);
     }
 
-     readFileContent(file, fileData, resolve) {
+      readFileContent(file, fileData, resolve) {
         if (file.type.includes('image')) {
             // For images, use Blob URL (instant, no external libraries)
             fileData.content = URL.createObjectURL(file);
@@ -151,6 +174,11 @@ class FileManager {
             reader.onload = (e) => {
                 fileData.pages = this.splitTextIntoPages(e.target.result);
                 resolve(); // File reading complete
+            };
+            reader.onerror = () => {
+                console.error('Error reading text file:', reader.error);
+                fileData.pages = this.generateMockPages(fileData.name);
+                resolve(); // File reading complete (even with error)
             };
             reader.readAsText(file);
         } else if (fileData.extension === 'pdf') {
@@ -200,6 +228,11 @@ class FileManager {
                     resolve(); // File reading complete (even with error)
                 });
             };
+            reader.onerror = () => {
+                console.error('Error reading PDF file:', reader.error);
+                fileData.pages = this.generateMockPages(fileData.name);
+                resolve(); // File reading complete (even with error)
+            };
             reader.readAsArrayBuffer(file);
         } else if (fileData.extension === 'docx') {
             // For DOCX files, use Mammoth.js for client-side conversion to HTML
@@ -240,6 +273,12 @@ class FileManager {
                         resolve(); // File reading complete (even with error)
                     });
             };
+            reader.onerror = () => {
+                console.error('Error reading DOCX file:', reader.error);
+                fileData.content = URL.createObjectURL(file);
+                fileData.pages = this.generateMockPages(fileData.name);
+                resolve(); // File reading complete (even with error)
+            };
             reader.readAsArrayBuffer(file);
         } else if (fileData.extension === 'doc') {
             // For older DOC files, use Blob URL
@@ -253,6 +292,7 @@ class FileManager {
             resolve(); // File reading complete
         } else if (fileData.extension === 'xlsx' || fileData.extension === 'xls') {
             // For Excel files, read as data URL and generate preview
+            const reader = new FileReader();
             reader.onload = (e) => {
                 fileData.content = e.target.result;
                 fileData.pages = [
@@ -260,9 +300,16 @@ class FileManager {
                 ];
                 resolve(); // File reading complete
             };
+            reader.onerror = () => {
+                console.error('Error reading Excel file:', reader.error);
+                fileData.content = URL.createObjectURL(file);
+                fileData.pages = this.generateMockPages(fileData.name);
+                resolve(); // File reading complete (even with error)
+            };
             reader.readAsDataURL(file);
         } else if (fileData.extension === 'ppt' || fileData.extension === 'pptx') {
             // For PowerPoint files, read as data URL and generate preview
+            const reader = new FileReader();
             reader.onload = (e) => {
                 fileData.content = e.target.result;
                 fileData.pages = [
@@ -270,15 +317,28 @@ class FileManager {
                 ];
                 resolve(); // File reading complete
             };
+            reader.onerror = () => {
+                console.error('Error reading PowerPoint file:', reader.error);
+                fileData.content = URL.createObjectURL(file);
+                fileData.pages = this.generateMockPages(fileData.name);
+                resolve(); // File reading complete (even with error)
+            };
             reader.readAsDataURL(file);
         } else {
             // For other file types, read as data URL
+            const reader = new FileReader();
             reader.onload = (e) => {
                 fileData.content = e.target.result;
                 fileData.pages = [
                     { number: 1, content: `File: ${fileData.name}\n\nPreview not available for this file type. Please download to view.` }
                 ];
                 resolve(); // File reading complete
+            };
+            reader.onerror = () => {
+                console.error('Error reading file:', reader.error);
+                fileData.content = URL.createObjectURL(file);
+                fileData.pages = this.generateMockPages(fileData.name);
+                resolve(); // File reading complete (even with error)
             };
             reader.readAsDataURL(file);
         }
