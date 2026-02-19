@@ -133,36 +133,34 @@ class FileManager {
     }
 
      readFileContent(file, fileData, resolve) {
-        const reader = new FileReader();
-        
         if (file.type.includes('image')) {
-            // For images, read as data URL
-            reader.onload = (e) => {
-                fileData.content = e.target.result;
-                fileData.pages = [
-                    {
-                        number: 1,
-                        content: e.target.result
-                    }
-                ];
-                resolve(); // File reading complete
-            };
-            reader.readAsDataURL(file);
+            // For images, use Blob URL (instant, no external libraries)
+            fileData.content = URL.createObjectURL(file);
+            fileData.pages = [
+                {
+                    number: 1,
+                    content: fileData.content
+                }
+            ];
+            resolve(); // File reading complete
         } else if (file.type.includes('text') || fileData.extension === 'txt') {
-            // For text files, read as text
+            // For text files, use Blob URL (instant, no external libraries)
+            fileData.content = URL.createObjectURL(file);
+            // Read text content for search functionality
+            const reader = new FileReader();
             reader.onload = (e) => {
-                fileData.content = e.target.result;
                 fileData.pages = this.splitTextIntoPages(e.target.result);
                 resolve(); // File reading complete
             };
             reader.readAsText(file);
         } else if (fileData.extension === 'pdf') {
-            // For PDFs, read as data URL for embedding and count actual pages
+            // For PDFs, use Blob URL and PDF.js for rendering
+            fileData.content = URL.createObjectURL(file);
+            
+            // Use PDF.js to count actual pages and render thumbnails
+            const reader = new FileReader();
             reader.onload = (e) => {
-                fileData.content = e.target.result;
-                
-                // Use PDF.js to count actual pages and render thumbnails
-                const arrayBuffer = this.dataURLToArrayBuffer(e.target.result);
+                const arrayBuffer = e.target.result;
                 pdfjsLib.getDocument(arrayBuffer).promise.then(pdf => {
                     const pageCount = pdf.numPages;
                     const pages = [];
@@ -202,18 +200,57 @@ class FileManager {
                     resolve(); // File reading complete (even with error)
                 });
             };
-            reader.readAsDataURL(file);
-        } else if (fileData.extension === 'doc' || fileData.extension === 'docx') {
-            // For Word documents, read as data URL and generate preview
+            reader.readAsArrayBuffer(file);
+        } else if (fileData.extension === 'docx') {
+            // For DOCX files, use Mammoth.js for client-side conversion to HTML
+            const reader = new FileReader();
             reader.onload = (e) => {
-                fileData.content = e.target.result;
-                // Generate preview pages with actual document content placeholder
-                fileData.pages = [
-                    { number: 1, content: `Document: ${fileData.name}\n\nThis is a preview of your Word document. For full functionality, please download and open the document.` }
-                ];
-                resolve(); // File reading complete
+                const arrayBuffer = e.target.result;
+                mammoth.convertToHtml({ arrayBuffer: arrayBuffer })
+                    .then(result => {
+                        const html = result.value; // The generated HTML
+                        const messages = result.messages; // Any messages, e.g., about unsupported features
+                        
+                        console.log('DOCX conversion messages:', messages);
+                        
+                        // Create Blob URL for the HTML content
+                        const blob = new Blob([html], { type: 'text/html' });
+                        fileData.content = URL.createObjectURL(blob);
+                        
+                        // Set pages with HTML content
+                        fileData.pages = [
+                            { 
+                                number: 1, 
+                                content: html 
+                            }
+                        ];
+                        
+                        resolve(); // File reading complete
+                    })
+                    .catch(error => {
+                        console.error('Error reading DOCX:', error);
+                        // Fallback to Blob URL and simple preview
+                        fileData.content = URL.createObjectURL(file);
+                        fileData.pages = [
+                            { 
+                                number: 1, 
+                                content: `Document: ${fileData.name}\n\nThis is a preview of your Word document. For full functionality, please download and open the document.` 
+                            }
+                        ];
+                        resolve(); // File reading complete (even with error)
+                    });
             };
-            reader.readAsDataURL(file);
+            reader.readAsArrayBuffer(file);
+        } else if (fileData.extension === 'doc') {
+            // For older DOC files, use Blob URL
+            fileData.content = URL.createObjectURL(file);
+            fileData.pages = [
+                { 
+                    number: 1, 
+                    content: `Document: ${fileData.name}\n\nThis is a preview of your Word document. For full functionality, please download and open the document.` 
+                }
+            ];
+            resolve(); // File reading complete
         } else if (fileData.extension === 'xlsx' || fileData.extension === 'xls') {
             // For Excel files, read as data URL and generate preview
             reader.onload = (e) => {
@@ -272,13 +309,17 @@ class FileManager {
         return filename.split('.').pop().toLowerCase();
     }
 
-    getFileCategory(mimeType, filename) {
+     getFileCategory(mimeType, filename) {
         const extension = this.getFileExtension(filename);
         
         if (['pdf'].includes(extension)) {
             return 'PDF Documents';
         } else if (['doc', 'docx'].includes(extension)) {
             return 'Word Documents';
+        } else if (['xls', 'xlsx'].includes(extension)) {
+            return 'Excel Spreadsheets';
+        } else if (['ppt', 'pptx'].includes(extension)) {
+            return 'PowerPoint Presentations';
         } else if (['txt'].includes(extension)) {
             return 'Text Files';
         } else if (['jpg', 'jpeg', 'png', 'gif'].includes(extension)) {
@@ -419,20 +460,28 @@ class FileManager {
         
         // Render appropriate preview based on file type
         if (file.type.includes('image')) {
-            // Image preview
+            // Image preview using Blob URL
             const img = document.createElement('img');
             img.className = 'image-preview';
             img.src = file.content;
             img.alt = file.name;
             previewContent.appendChild(img);
         } else if (file.type.includes('text') || file.extension === 'txt') {
-            // Text preview
+            // Text preview - fetch and display content from Blob URL
             const previewText = document.createElement('div');
             previewText.className = 'text-preview';
-            previewText.textContent = file.content;
+            fetch(file.content)
+                .then(response => response.text())
+                .then(text => {
+                    previewText.textContent = text;
+                })
+                .catch(error => {
+                    console.error('Error reading text file:', error);
+                    previewText.textContent = 'Unable to read text file preview';
+                });
             previewContent.appendChild(previewText);
         } else if (file.extension === 'pdf') {
-            // PDF preview (embedded)
+            // PDF preview using PDF.js or embedded viewer
             const pdfPreview = document.createElement('object');
             pdfPreview.className = 'pdf-preview';
             pdfPreview.data = file.content;
@@ -445,8 +494,25 @@ class FileManager {
                 </div>
             `;
             previewContent.appendChild(pdfPreview);
-        } else if (['doc', 'docx', 'xlsx', 'xls', 'ppt', 'pptx'].includes(file.extension)) {
-            // Document preview
+        } else if (file.extension === 'docx') {
+            // DOCX preview using Mammoth.js (HTML conversion)
+            if (file.pages && file.pages.length > 0 && file.pages[0].content && file.pages[0].content.startsWith('<')) {
+                const docxPreview = document.createElement('div');
+                docxPreview.className = 'docx-preview';
+                docxPreview.innerHTML = file.pages[0].content;
+                previewContent.appendChild(docxPreview);
+            } else {
+                const docPreview = document.createElement('div');
+                docPreview.className = 'doc-preview';
+                docPreview.innerHTML = `
+                    <div class="file-icon">📘</div>
+                    <p>DOCX Document</p>
+                    <p style="font-size: 12px; margin-top: 10px;">${file.name}</p>
+                `;
+                previewContent.appendChild(docPreview);
+            }
+        } else if (['doc', 'xlsx', 'xls', 'ppt', 'pptx'].includes(file.extension)) {
+            // Other Office document previews
             const docPreview = document.createElement('div');
             docPreview.className = 'doc-preview';
             const icon = this.getFileIcon(file.extension);
@@ -523,6 +589,66 @@ class FileManager {
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    createOfficeDocumentViewer(file, container) {
+        const officeViewer = document.createElement('div');
+        officeViewer.style.cssText = `
+            padding: 20px;
+            text-align: center;
+            color: #666;
+            font-size: 16px;
+        `;
+        
+        // Check if we have file content to create a download link
+        let downloadLink = '';
+        if (file.content) {
+            downloadLink = `
+                <a href="${file.content}" download="${file.name}" 
+                   style="display: inline-block; margin-top: 15px; padding: 10px 20px; 
+                          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                          color: white; text-decoration: none; border-radius: 25px; 
+                          font-weight: 600; transition: all 0.3s ease;">
+                    📥 Download ${file.name}
+                </a>
+            `;
+        }
+        
+        const fileIcons = {
+            doc: '📘',
+            docx: '📘',
+            xls: '📊',
+            xlsx: '📊',
+            ppt: '📽️',
+            pptx: '📽️'
+        };
+        
+        // Try to use Google Docs Viewer for preview
+        const googleViewerUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(file.content)}&embedded=true`;
+        
+        officeViewer.innerHTML = `
+            <div style="font-size: 48px; margin-bottom: 10px;">${fileIcons[file.extension] || '📄'}</div>
+            <p>${file.extension.toUpperCase()} Document Preview</p>
+            ${file.pages.length > 0 ? `<p style="font-size: 14px; margin-top: 10px;">Pages: ${file.pages.length}</p>` : ''}
+            
+            <div style="margin: 20px 0; height: 500px; border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;">
+                <iframe 
+                    src="${googleViewerUrl}" 
+                    width="100%" 
+                    height="100%" 
+                    frameborder="0"
+                    style="border: none;"
+                >
+                    <p>Your browser does not support iframes. Please download the document to view.</p>
+                </iframe>
+            </div>
+            
+            <p style="font-size: 12px; margin-top: 10px;">
+                For best viewing experience, use the Google Docs Viewer or download and open in Microsoft Office
+            </p>
+            ${downloadLink}
+        `;
+        container.appendChild(officeViewer);
     }
 
      createPagesPreview(file) {
@@ -693,7 +819,7 @@ class FileManager {
         
         // File preview based on type
         if (file.type.includes('image')) {
-            // Image display
+            // Image display using Blob URL
             const img = document.createElement('img');
             img.src = file.content;
             img.alt = file.name;
@@ -704,9 +830,8 @@ class FileManager {
             `;
             modalBody.appendChild(img);
         } else if (file.type.includes('text') || file.extension === 'txt') {
-            // Text display
+            // Text display - fetch and display content from Blob URL
             const textContainer = document.createElement('pre');
-            textContainer.textContent = file.content;
             textContainer.style.cssText = `
                 white-space: pre-wrap;
                 word-wrap: break-word;
@@ -719,11 +844,20 @@ class FileManager {
                 max-height: 60vh;
                 overflow-y: auto;
             `;
+            fetch(file.content)
+                .then(response => response.text())
+                .then(text => {
+                    textContainer.textContent = text;
+                })
+                .catch(error => {
+                    console.error('Error reading text file:', error);
+                    textContainer.textContent = 'Unable to read text file';
+                });
             modalBody.appendChild(textContainer);
         } else if (file.extension === 'pdf') {
-            // PDF display using data URL
+            // PDF display using Blob URL and PDF.js or embed
             console.log('Displaying PDF file:', file);
-            if (file.content && file.content.startsWith('data:')) {
+            if (file.content) {
                 const pdfViewer = document.createElement('embed');
                 pdfViewer.src = file.content;
                 pdfViewer.type = 'application/pdf';
@@ -734,7 +868,7 @@ class FileManager {
                 `;
                 modalBody.appendChild(pdfViewer);
             } else {
-                console.error('Invalid PDF content - no data URL found');
+                console.error('Invalid PDF content');
                 const errorDiv = document.createElement('div');
                 errorDiv.style.cssText = `
                     padding: 20px;
@@ -749,67 +883,28 @@ class FileManager {
                 `;
                 modalBody.appendChild(errorDiv);
             }
-         } else if (file.extension === 'doc' || file.extension === 'docx' || 
-                   file.extension === 'xlsx' || file.extension === 'xls' || 
-                   file.extension === 'ppt' || file.extension === 'pptx') {
-            // Office document preview with Google Docs Viewer
-            const officeViewer = document.createElement('div');
-            officeViewer.style.cssText = `
-                padding: 20px;
-                text-align: center;
-                color: #666;
-                font-size: 16px;
-            `;
-            
-            // Check if we have file content to create a download link
-            let downloadLink = '';
-            if (file.content) {
-                downloadLink = `
-                    <a href="${file.content}" download="${file.name}" 
-                       style="display: inline-block; margin-top: 15px; padding: 10px 20px; 
-                              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                              color: white; text-decoration: none; border-radius: 25px; 
-                              font-weight: 600; transition: all 0.3s ease;">
-                        📥 Download ${file.name}
-                    </a>
+         } else if (file.extension === 'docx') {
+            // DOCX display using Mammoth.js HTML conversion
+            if (file.pages && file.pages.length > 0 && file.pages[0].content && file.pages[0].content.startsWith('<')) {
+                const docxViewer = document.createElement('div');
+                docxViewer.style.cssText = `
+                    padding: 20px;
+                    background-color: #f8f9fa;
+                    border-radius: 4px;
+                    max-height: 60vh;
+                    overflow-y: auto;
                 `;
+                docxViewer.innerHTML = file.pages[0].content;
+                modalBody.appendChild(docxViewer);
+            } else {
+                // Fallback to Google Docs Viewer
+                this.createOfficeDocumentViewer(file, modalBody);
             }
-            
-            const fileIcons = {
-                doc: '📘',
-                docx: '📘',
-                xls: '📊',
-                xlsx: '📊',
-                ppt: '📽️',
-                pptx: '📽️'
-            };
-            
-            // Try to use Google Docs Viewer for preview
-            const googleViewerUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(file.content)}&embedded=true`;
-            
-            officeViewer.innerHTML = `
-                <div style="font-size: 48px; margin-bottom: 10px;">${fileIcons[file.extension] || '📄'}</div>
-                <p>${file.extension.toUpperCase()} Document Preview</p>
-                ${file.pages.length > 0 ? `<p style="font-size: 14px; margin-top: 10px;">Pages: ${file.pages.length}</p>` : ''}
-                
-                <div style="margin: 20px 0; height: 500px; border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;">
-                    <iframe 
-                        src="${googleViewerUrl}" 
-                        width="100%" 
-                        height="100%" 
-                        frameborder="0"
-                        style="border: none;"
-                    >
-                        <p>Your browser does not support iframes. Please download the document to view.</p>
-                    </iframe>
-                </div>
-                
-                <p style="font-size: 12px; margin-top: 10px;">
-                    For best viewing experience, use the Google Docs Viewer or download and open in Microsoft Office
-                </p>
-                ${downloadLink}
-            `;
-            modalBody.appendChild(officeViewer);
+        } else if (file.extension === 'doc' || file.extension === 'xlsx' || 
+                   file.extension === 'xls' || file.extension === 'ppt' || 
+                   file.extension === 'pptx') {
+            // Other Office document preview with Google Docs Viewer
+            this.createOfficeDocumentViewer(file, modalBody);
         } else {
             // Other file types display
             const defaultViewer = document.createElement('div');
