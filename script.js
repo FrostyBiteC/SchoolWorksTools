@@ -157,38 +157,46 @@ class FileManager {
 
       readFileContent(file, fileData, resolve) {
         if (file.type.includes('image')) {
-            // For images, use Blob URL (instant, no external libraries)
-            fileData.content = URL.createObjectURL(file);
-            fileData.pages = [
-                {
-                    number: 1,
-                    content: fileData.content
-                }
-            ];
-            resolve(); // File reading complete
-        } else if (file.type.includes('text') || fileData.extension === 'txt') {
-            // For text files, use Blob URL (instant, no external libraries)
-            fileData.content = URL.createObjectURL(file);
-            // Read text content for search functionality
+            // For images, read as data URL for persistence
             const reader = new FileReader();
             reader.onload = (e) => {
-                fileData.pages = this.splitTextIntoPages(e.target.result);
-                resolve(); // File reading complete
+                fileData.content = e.target.result;
+                fileData.pages = [
+                    {
+                        number: 1,
+                        content: fileData.content
+                    }
+                ];
+                resolve();
+            };
+            reader.onerror = () => {
+                console.error('Error reading image file:', reader.error);
+                fileData.pages = this.generateMockPages(fileData.name);
+                resolve();
+            };
+            reader.readAsDataURL(file);
+        } else if (file.type.includes('text') || fileData.extension === 'txt') {
+            // For text files, read as data URL for persistence
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                fileData.content = e.target.result;
+                fileData.pages = this.splitTextIntoPages(atob(fileData.content.split(',')[1]));
+                resolve();
             };
             reader.onerror = () => {
                 console.error('Error reading text file:', reader.error);
                 fileData.pages = this.generateMockPages(fileData.name);
-                resolve(); // File reading complete (even with error)
+                resolve();
             };
-            reader.readAsText(file);
+            reader.readAsDataURL(file);
         } else if (fileData.extension === 'pdf') {
-            // For PDFs, use Blob URL and PDF.js for rendering
-            fileData.content = URL.createObjectURL(file);
-            
-            // Use PDF.js to count actual pages and render thumbnails
+            // For PDFs, read as data URL for persistence
             const reader = new FileReader();
             reader.onload = (e) => {
-                const arrayBuffer = e.target.result;
+                fileData.content = e.target.result;
+                
+                // Use PDF.js to count actual pages and render thumbnails
+                const arrayBuffer = this.dataURLToArrayBuffer(fileData.content);
                 pdfjsLib.getDocument(arrayBuffer).promise.then(pdf => {
                     const pageCount = pdf.numPages;
                     const pages = [];
@@ -233,97 +241,121 @@ class FileManager {
                 fileData.pages = this.generateMockPages(fileData.name);
                 resolve(); // File reading complete (even with error)
             };
-            reader.readAsArrayBuffer(file);
-        } else if (fileData.extension === 'docx') {
-            // For DOCX files, use Mammoth.js for client-side conversion to HTML
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const arrayBuffer = e.target.result;
-                mammoth.convertToHtml({ arrayBuffer: arrayBuffer })
-                    .then(result => {
-                        const html = result.value; // The generated HTML
-                        const messages = result.messages; // Any messages, e.g., about unsupported features
-                        
-                        console.log('DOCX conversion messages:', messages);
-                        
-                        // Create Blob URL for the HTML content
-                        const blob = new Blob([html], { type: 'text/html' });
-                        fileData.content = URL.createObjectURL(blob);
-                        
-                        // Set pages with HTML content
-                        fileData.pages = [
-                            { 
-                                number: 1, 
-                                content: html 
-                            }
-                        ];
-                        
-                        resolve(); // File reading complete
-                    })
-                    .catch(error => {
-                        console.error('Error reading DOCX:', error);
-                        // Fallback to Blob URL and simple preview
-                        fileData.content = URL.createObjectURL(file);
-                        fileData.pages = [
-                            { 
-                                number: 1, 
-                                content: `Document: ${fileData.name}\n\nThis is a preview of your Word document. For full functionality, please download and open the document.` 
-                            }
-                        ];
-                        resolve(); // File reading complete (even with error)
-                    });
-            };
-            reader.onerror = () => {
-                console.error('Error reading DOCX file:', reader.error);
-                fileData.content = URL.createObjectURL(file);
-                fileData.pages = this.generateMockPages(fileData.name);
-                resolve(); // File reading complete (even with error)
-            };
-            reader.readAsArrayBuffer(file);
-        } else if (fileData.extension === 'doc') {
-            // For older DOC files, use Blob URL
-            fileData.content = URL.createObjectURL(file);
-            fileData.pages = [
-                { 
-                    number: 1, 
-                    content: `Document: ${fileData.name}\n\nThis is a preview of your Word document. For full functionality, please download and open the document.` 
-                }
-            ];
-            resolve(); // File reading complete
-        } else if (fileData.extension === 'xlsx' || fileData.extension === 'xls') {
-            // For Excel files, read as data URL and generate preview
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                fileData.content = e.target.result;
-                fileData.pages = [
-                    { number: 1, content: `Spreadsheet: ${fileData.name}\n\nThis is a preview of your Excel spreadsheet. For full functionality, please download and open the document.` }
-                ];
-                resolve(); // File reading complete
-            };
-            reader.onerror = () => {
-                console.error('Error reading Excel file:', reader.error);
-                fileData.content = URL.createObjectURL(file);
-                fileData.pages = this.generateMockPages(fileData.name);
-                resolve(); // File reading complete (even with error)
-            };
             reader.readAsDataURL(file);
-        } else if (fileData.extension === 'ppt' || fileData.extension === 'pptx') {
-            // For PowerPoint files, read as data URL and generate preview
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                fileData.content = e.target.result;
-                fileData.pages = [
-                    { number: 1, content: `Presentation: ${fileData.name}\n\nThis is a preview of your PowerPoint presentation. For full functionality, please download and open the document.` }
-                ];
-                resolve(); // File reading complete
-            };
-            reader.onerror = () => {
-                console.error('Error reading PowerPoint file:', reader.error);
-                fileData.content = URL.createObjectURL(file);
-                fileData.pages = this.generateMockPages(fileData.name);
-                resolve(); // File reading complete (even with error)
-            };
-            reader.readAsDataURL(file);
+         } else if (fileData.extension === 'docx') {
+             // For DOCX files, use Mammoth.js for client-side conversion to HTML
+             const reader = new FileReader();
+             reader.onload = (e) => {
+                 const arrayBuffer = e.target.result;
+                 mammoth.convertToHtml({ arrayBuffer: arrayBuffer })
+                     .then(result => {
+                         const html = result.value; // The generated HTML
+                         const messages = result.messages; // Any messages, e.g., about unsupported features
+                         
+                         console.log('DOCX conversion messages:', messages);
+                         
+                         // Create data URL for the HTML content
+                         fileData.content = 'data:text/html;base64,' + btoa(html);
+                         
+                         // Set pages with HTML content
+                         fileData.pages = [
+                             { 
+                                 number: 1, 
+                                 content: html 
+                             }
+                         ];
+                         
+                         resolve(); // File reading complete
+                     })
+                     .catch(error => {
+                         console.error('Error reading DOCX:', error);
+                         // Fallback to data URL and simple preview
+                         const reader2 = new FileReader();
+                         reader2.onload = (e2) => {
+                             fileData.content = e2.target.result;
+                             fileData.pages = [
+                                 { 
+                                     number: 1, 
+                                     content: `Document: ${fileData.name}\n\nThis is a preview of your Word document. For full functionality, please download and open the document.` 
+                                 }
+                             ];
+                             resolve();
+                         };
+                         reader2.readAsDataURL(file);
+                     });
+             };
+             reader.onerror = () => {
+                 console.error('Error reading DOCX file:', reader.error);
+                 const reader2 = new FileReader();
+                 reader2.onload = (e2) => {
+                     fileData.content = e2.target.result;
+                     fileData.pages = this.generateMockPages(fileData.name);
+                     resolve();
+                 };
+                 reader2.readAsDataURL(file);
+             };
+             reader.readAsArrayBuffer(file);
+         } else if (fileData.extension === 'doc') {
+             // For older DOC files, use data URL
+             const reader = new FileReader();
+             reader.onload = (e) => {
+                 fileData.content = e.target.result;
+                 fileData.pages = [
+                     { 
+                         number: 1, 
+                         content: `Document: ${fileData.name}\n\nThis is a preview of your Word document. For full functionality, please download and open the document.` 
+                     }
+                 ];
+                 resolve(); // File reading complete
+             };
+             reader.onerror = () => {
+                 console.error('Error reading DOC file:', reader.error);
+                 fileData.pages = this.generateMockPages(fileData.name);
+                 resolve();
+             };
+             reader.readAsDataURL(file);
+         } else if (fileData.extension === 'xlsx' || fileData.extension === 'xls') {
+             // For Excel files, read as data URL and generate preview
+             const reader = new FileReader();
+             reader.onload = (e) => {
+                 fileData.content = e.target.result;
+                 fileData.pages = [
+                     { number: 1, content: `Spreadsheet: ${fileData.name}\n\nThis is a preview of your Excel spreadsheet. For full functionality, please download and open the document.` }
+                 ];
+                 resolve(); // File reading complete
+             };
+             reader.onerror = () => {
+                 console.error('Error reading Excel file:', reader.error);
+                 const reader2 = new FileReader();
+                 reader2.onload = (e2) => {
+                     fileData.content = e2.target.result;
+                     fileData.pages = this.generateMockPages(fileData.name);
+                     resolve();
+                 };
+                 reader2.readAsDataURL(file);
+             };
+             reader.readAsDataURL(file);
+         } else if (fileData.extension === 'ppt' || fileData.extension === 'pptx') {
+             // For PowerPoint files, read as data URL and generate preview
+             const reader = new FileReader();
+             reader.onload = (e) => {
+                 fileData.content = e.target.result;
+                 fileData.pages = [
+                     { number: 1, content: `Presentation: ${fileData.name}\n\nThis is a preview of your PowerPoint presentation. For full functionality, please download and open the document.` }
+                 ];
+                 resolve(); // File reading complete
+             };
+             reader.onerror = () => {
+                 console.error('Error reading PowerPoint file:', reader.error);
+                 const reader2 = new FileReader();
+                 reader2.onload = (e2) => {
+                     fileData.content = e2.target.result;
+                     fileData.pages = this.generateMockPages(fileData.name);
+                     resolve();
+                 };
+                 reader2.readAsDataURL(file);
+             };
+             reader.readAsDataURL(file);
         } else {
             // For other file types, read as data URL
             const reader = new FileReader();
@@ -526,20 +558,18 @@ class FileManager {
             img.src = file.content;
             img.alt = file.name;
             previewContent.appendChild(img);
-        } else if (file.type.includes('text') || file.extension === 'txt') {
-            // Text preview - fetch and display content from Blob URL
-            const previewText = document.createElement('div');
-            previewText.className = 'text-preview';
-            fetch(file.content)
-                .then(response => response.text())
-                .then(text => {
-                    previewText.textContent = text;
-                })
-                .catch(error => {
-                    console.error('Error reading text file:', error);
-                    previewText.textContent = 'Unable to read text file preview';
-                });
-            previewContent.appendChild(previewText);
+         } else if (file.type.includes('text') || file.extension === 'txt') {
+             // Text preview from data URL
+             const previewText = document.createElement('div');
+             previewText.className = 'text-preview';
+             try {
+                 const text = atob(file.content.split(',')[1]);
+                 previewText.textContent = text;
+             } catch (error) {
+                 console.error('Error reading text file:', error);
+                 previewText.textContent = 'Unable to read text file preview';
+             }
+             previewContent.appendChild(previewText);
         } else if (file.extension === 'pdf') {
             // PDF preview using PDF.js or embedded viewer
             const pdfPreview = document.createElement('object');
@@ -889,31 +919,29 @@ class FileManager {
                 border-radius: 4px;
             `;
             modalBody.appendChild(img);
-        } else if (file.type.includes('text') || file.extension === 'txt') {
-            // Text display - fetch and display content from Blob URL
-            const textContainer = document.createElement('pre');
-            textContainer.style.cssText = `
-                white-space: pre-wrap;
-                word-wrap: break-word;
-                font-size: 14px;
-                line-height: 1.6;
-                background-color: #f8f9fa;
-                padding: 15px;
-                border-radius: 4px;
-                margin: 0;
-                max-height: 60vh;
-                overflow-y: auto;
-            `;
-            fetch(file.content)
-                .then(response => response.text())
-                .then(text => {
-                    textContainer.textContent = text;
-                })
-                .catch(error => {
-                    console.error('Error reading text file:', error);
-                    textContainer.textContent = 'Unable to read text file';
-                });
-            modalBody.appendChild(textContainer);
+         } else if (file.type.includes('text') || file.extension === 'txt') {
+             // Text display from data URL
+             const textContainer = document.createElement('pre');
+             textContainer.style.cssText = `
+                 white-space: pre-wrap;
+                 word-wrap: break-word;
+                 font-size: 14px;
+                 line-height: 1.6;
+                 background-color: #f8f9fa;
+                 padding: 15px;
+                 border-radius: 4px;
+                 margin: 0;
+                 max-height: 60vh;
+                 overflow-y: auto;
+             `;
+             try {
+                 const text = atob(file.content.split(',')[1]);
+                 textContainer.textContent = text;
+             } catch (error) {
+                 console.error('Error reading text file:', error);
+                 textContainer.textContent = 'Unable to read text file';
+             }
+             modalBody.appendChild(textContainer);
         } else if (file.extension === 'pdf') {
             // PDF display using Blob URL and PDF.js or embed
             console.log('Displaying PDF file:', file);
